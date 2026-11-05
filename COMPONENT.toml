@@ -1,0 +1,16 @@
+[component]
+name = "SigmaOS-craft-light"
+tier = 5
+stability = "scaffold"
+language = "rust"
+description = "Lighting and HDR management for SigmaOS creative suite — exposure, tone mapping, HDR display"
+upstream = []
+
+[contract]
+provides = ["hdr-tone-mapping", "lighting-scene"]
+depends_on = []
+
+[maturity]
+status = "Scaffold"
+test_evidence = "Compiles"
+next_milestone = "Verification test suite"

@@ -1,0 +1,9 @@
+[package]
+name = "sigmaos_craft_light"
+version = "0.1.0"
+edition = "2021"
+description = "Lighting and HDR management for SigmaOS creative suite — exposure, tone mapping, HDR display"
+
+[lib]
+name = "sigmaos_craft_light"
+path = "src/lib.rs"
