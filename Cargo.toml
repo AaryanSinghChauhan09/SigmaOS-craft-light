@@ -2,7 +2,8 @@
 name = "sigmaos_craft_light"
 version = "0.1.0"
 edition = "2021"
-description = "Lighting and HDR management for SigmaOS creative suite — exposure, tone mapping, HDR display"
+license = "MIT"
+description = "SigmaOS craft-light component inspired by Linux Mint / Omarchy / Arch Linux."
 
 [lib]
 name = "sigmaos_craft_light"
