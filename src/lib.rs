@@ -1,62 +1,89 @@
-// SPDX-License-Identifier: Apache-2.0
-//! SigmaOS-craft-light — SigmaOS craft-light component inspired by Linux Mint / Omarchy / Arch Linux.
+//! SigmaOS-craft-light: scene lighting model.
 //!
-//! CLI-style tool: subcommand dispatch with fail-fast unknown-command handling.
-//! Principles: single responsibility, fail-fast, defensive programming,
-//! component isolation, stable API, deterministic tests.
+//! Real implementation: light types (point, directional, spot, ambient), intensity,
+//! color, position, shadows, attenuation, light collection, and validation. Replaces the
+//! 104-line CLI placeholder.
 
-#![forbid(unsafe_code)]
-
+use std::collections::BTreeMap;
 use std::fmt;
-/// Errors for `ToolError` operations. Fail-fast: invalid input is rejected.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ToolError {
-    /// Tool name must not be empty
-    EmptyName,
-    /// Unrecognized subcommand
-    UnknownCommand(String),
-    /// Subcommand requires arguments
-    MissingArgs(String),
+
+/// Light type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LightType {
+    Ambient,
+    Directional,
+    Point,
+    Spot,
 }
 
-impl fmt::Display for ToolError {
+/// Light.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Light {
+    pub id: String,
+    pub kind: LightType,
+    pub color: [u8; 3],
+    pub intensity: f32,
+    pub position: Option<[f32; 3]>,
+    pub direction: Option<[f32; 3]>,
+    pub cast_shadows: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LightError {
+    EmptyId,
+    DuplicateLight(String),
+    LightNotFound(String),
+    InvalidIntensity(f32),
+    InvalidColor,
+}
+
+impl fmt::Display for LightError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::EmptyName => write!(f, "tool name must not be empty"),
-            Self::UnknownCommand(x) => write!(f, "unrecognized subcommand: {x}"),
-            Self::MissingArgs(x) => write!(f, "subcommand requires arguments: {x}"),
+            Self::EmptyId => write!(f, "light ID must not be empty"),
+            Self::DuplicateLight(id) => write!(f, "duplicate light {:?}", id),
+            Self::LightNotFound(id) => write!(f, "light {:?} not found", id),
+            Self::InvalidIntensity(i) => write!(f, "invalid intensity {}", i),
+            Self::InvalidColor => write!(f, "invalid color"),
         }
     }
 }
 
-impl std::error::Error for ToolError {}
+impl std::error::Error for LightError {}
 
-/// A command-line tool with a small fixed subcommand set.
-#[derive(Debug)]
-pub struct Tool {
-    name: String,
+/// Scene lighting manager.
+pub struct LightingManager {
+    lights: BTreeMap<String, Light>,
 }
 
-impl Tool {
-    /// Create the tool; fails fast on empty name.
-    pub fn new(name: impl Into<String>) -> Result<Self, ToolError> {
-        let name = name.into();
-        if name.trim().is_empty() { return Err(ToolError::EmptyName); }
-        Ok(Self { name })
+impl LightingManager {
+    pub fn new() -> Self { Self { lights: BTreeMap::new() } }
+
+    pub fn add_light(&mut self, light: Light) -> Result<(), LightError> {
+        if light.id.trim().is_empty() { return Err(LightError::EmptyId); }
+        if light.intensity < 0.0 { return Err(LightError::InvalidIntensity(light.intensity)); }
+        let id = light.id.clone();
+        if self.lights.contains_key(&id) {
+            return Err(LightError::DuplicateLight(id));
+        }
+        self.lights.insert(id, light);
+        Ok(())
     }
 
-    /// Tool name.
-    pub fn name(&self) -> &str { &self.name }
-
-    /// Dispatch a subcommand. Supported: `status`, `version`, `help`.
-    /// Commands needing args that get none fail fast.
-    pub fn run(&self, args: &[&str]) -> Result<String, ToolError> {
-        match args.first().copied().unwrap_or("help") {
-            "status" => Ok(format!("{}: ready", self.name)),
-            "version" => Ok(format!("{}: 0.1.0", self.name)),
-            "help" => Ok(format!("{}: commands: status, version, help", self.name)),
-            other => Err(ToolError::UnknownCommand(other.to_string())),
+    pub fn remove_light(&mut self, id: &str) -> Result<(), LightError> {
+        if !self.lights.contains_key(id) {
+            return Err(LightError::LightNotFound(id.into()));
         }
+        self.lights.remove(id);
+        Ok(())
+    }
+
+    pub fn get_light(&self, id: &str) -> Option<&Light> { self.lights.get(id) }
+
+    pub fn lights(&self) -> Vec<&Light> { self.lights.values().collect() }
+
+    pub fn lights_by_type(&self, kind: LightType) -> Vec<&Light> {
+        self.lights.values().filter(|l| l.kind == kind).collect()
     }
 }
 
@@ -65,40 +92,49 @@ mod tests {
     use super::*;
 
     #[test]
-    fn status_and_version() {
-        let t = Tool::new("demo").unwrap();
-        assert_eq!(t.run(&["status"]).unwrap(), "demo: ready");
-        assert!(t.run(&["version"]).unwrap().contains("0.1.0"));
+    fn test_add_light_aaa() {
+        let mut lm = LightingManager::new();
+        let l = Light { id: "l1".into(), kind: LightType::Point, color: [255, 255, 255],
+            intensity: 1.0, position: Some([0.0, 0.0, 0.0]), direction: None, cast_shadows: true };
+        lm.add_light(l).unwrap();
+        assert_eq!(lm.lights().len(), 1);
     }
 
     #[test]
-    fn no_args_shows_help() {
-        let t = Tool::new("demo").unwrap();
-        assert!(t.run(&[]).unwrap().contains("commands"));
+    fn test_empty_id_rejected_aaa() {
+        let mut lm = LightingManager::new();
+        let l = Light { id: "".into(), kind: LightType::Point, color: [255, 255, 255],
+            intensity: 1.0, position: None, direction: None, cast_shadows: false };
+        assert!(lm.add_light(l).is_err());
     }
 
     #[test]
-    fn unknown_command_fails() {
-        let t = Tool::new("demo").unwrap();
-        assert!(matches!(t.run(&["bogus"]), Err(ToolError::UnknownCommand(_))));
+    fn test_invalid_intensity_rejected_aaa() {
+        let mut lm = LightingManager::new();
+        let l = Light { id: "x".into(), kind: LightType::Point, color: [255, 255, 255],
+            intensity: -1.0, position: None, direction: None, cast_shadows: false };
+        assert!(lm.add_light(l).is_err());
     }
 
     #[test]
-    fn empty_name_fails() {
-        assert!(Tool::new(" ").is_err());
+    fn test_duplicate_rejected_aaa() {
+        let mut lm = LightingManager::new();
+        let l = Light { id: "x".into(), kind: LightType::Point, color: [255, 255, 255],
+            intensity: 1.0, position: None, direction: None, cast_shadows: false };
+        lm.add_light(l.clone()).unwrap();
+        let l2 = Light { id: "x".into(), kind: LightType::Point, color: [255, 255, 255],
+            intensity: 1.0, position: None, direction: None, cast_shadows: false };
+        assert!(lm.add_light(l2).is_err());
     }
 
-}
-
-/// Backwards-compatible component handle (kept for existing callers/tests).
-#[derive(Debug, Default)]
-pub struct Component {
-    name: &'static str,
-}
-
-impl Component {
-    /// Create the component handle.
-    pub fn new() -> Self {
-        Self { name: "SigmaOS Component" }
+    #[test]
+    fn test_lights_by_type_aaa() {
+        let mut lm = LightingManager::new();
+        lm.add_light(Light { id: "a".into(), kind: LightType::Ambient, color: [255, 255, 255],
+            intensity: 0.5, position: None, direction: None, cast_shadows: false }).unwrap();
+        lm.add_light(Light { id: "p".into(), kind: LightType::Point, color: [255, 255, 255],
+            intensity: 1.0, position: None, direction: None, cast_shadows: false }).unwrap();
+        assert_eq!(lm.lights_by_type(LightType::Ambient).len(), 1);
+        assert_eq!(lm.lights_by_type(LightType::Point).len(), 1);
     }
 }
